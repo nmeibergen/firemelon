@@ -132,9 +132,8 @@ export async function syncFireMelon(
 
                     map(arrayOfChanged, async (wmObj) => {
                         const itemValue = isDelete ? null : (wmObj.valueOf() as Item);
-                        const docRef = isDelete
-                            ? collectionRef.doc(wmObj.toString())
-                            : collectionRef.doc(itemValue!.id);
+                        const docId = isDelete ? wmObj.toString() : itemValue!.id;
+                        const docRef = collectionRef.doc(docId);
 
                         const ommited = [
                             ...defaultExcluded,
@@ -226,6 +225,7 @@ export async function syncFireMelon(
                                     console.warn(warning)
 
                                     batchArray[batchIndex].set(docRef, {
+                                        id: docId,
                                         server_created_at: getTimestamp(),
                                         server_updated_at: getTimestamp(),
                                         server_deleted_at: getTimestamp(),
