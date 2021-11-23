@@ -145,7 +145,7 @@ export async function syncFireMelon(
                             case 'created': {
                                 //@ts-ignore
                                 const docFromServer = docRefs[collectionName].created.find(doc => doc.id == data.id)
-                                if(docFromServer){
+                                if (docFromServer) {
                                     const warning = `${DOCUMENT_TRYING_TO_CREATE_ALREADY_EXISTS_ON_SERVER_ERROR} - document '${collectionName}' with id: '${data.id}'`
                                     console.warn(warning);
                                 }
@@ -169,12 +169,14 @@ export async function syncFireMelon(
                                     const { server_deleted_at: deletedAt, server_updated_at: updatedAt } = docFromServer;
 
                                     if (updatedAt.toDate() > lastPulledAt) {
-                                        throw new Error(DOCUMENT_WAS_MODIFIED_ERROR);
+                                        const error = `${DOCUMENT_WAS_MODIFIED_ERROR} - document '${collectionName}' with id: '${data.id}' - updatedAt: ${updatedAt.toDate()}, lastPulledAt: ${lastPulledAt}`
+                                        throw new Error(error);
                                     }
 
-                                    if (deletedAt?.toDate() > lastPulledAt) {
-                                        throw new Error(DOCUMENT_WAS_DELETED_ERROR);
-                                    }
+                                    if (deletedAt) throw new Error(DOCUMENT_WAS_DELETED_ERROR); // In line with 3a of Push Implementation (here)[https://nozbe.github.io/WatermelonDB/Advanced/Sync.html]
+                                    // if (deletedAt?.toDate() > lastPulledAt) {
+                                    //     throw new Error(DOCUMENT_WAS_DELETED_ERROR);
+                                    // }
 
                                     batchArray[batchIndex].update(docRef, {
                                         ...data,
@@ -221,17 +223,9 @@ export async function syncFireMelon(
                                     });
 
                                 } else {
-                                    const warning = `${DOCUMENT_TRYING_TO_DELETE_BUT_DOESNT_EXIST_ON_SERVER_ERROR} - document '${collectionName}' with id: '${wmObj.toString()}'`
+                                    const warning = `${DOCUMENT_TRYING_TO_DELETE_BUT_DOESNT_EXIST_ON_SERVER_ERROR} - document '${collectionName}' with id: '${docId}'`
                                     console.warn(warning)
-
-                                    batchArray[batchIndex].set(docRef, {
-                                        id: docId,
-                                        server_created_at: getTimestamp(),
-                                        server_updated_at: getTimestamp(),
-                                        server_deleted_at: getTimestamp(),
-                                        isDeleted: true,
-                                        sessionId,
-                                    });
+                                    // Will ignore in line with 4 of Push Implementation (here)[https://nozbe.github.io/WatermelonDB/Advanced/Sync.html]
                                 }
 
                                 operationCounter++;
@@ -254,11 +248,15 @@ export async function syncFireMelon(
             console.log(`FireMelon > Push > Will commit ${batchArray.length} batches`)
             let counter = 1
             try {
-                for (const batch of batchArray) {
-                    console.log(`FireMelon > Push > Batch ${counter} > commit`)
-                    await batch.commit()
-                    console.log(`FireMelon > Push > Commit batch ${counter} done`)
-                    counter++;
+                if (batchArray.length > 0) {
+                    for (const batch of batchArray) {
+                        console.log(`FireMelon > Push > Batch ${counter} > commit`)
+                        await batch.commit()
+                        console.log(`FireMelon > Push > Commit batch ${counter} done`)
+                        counter++;
+                    }
+                } else {
+                    console.log('FireMelon > Push > Nothing to push')
                 }
             } catch (error) {
                 console.error(error);
@@ -271,7 +269,7 @@ export const DOCUMENT_WAS_MODIFIED_ERROR = 'DOCUMENT WAS MODIFIED DURING PULL AN
 export const DOCUMENT_WAS_DELETED_ERROR = 'DOCUMENT WAS DELETED DURING PULL AND PUSH OPERATIONS';
 export const DOCUMENT_TRYING_TO_CREATE_ALREADY_EXISTS_ON_SERVER_ERROR = 'TYRING TO CREATE A DOCUMENT THAT ALREADY EXISTS ON THE SERVER - WILL OVERRIDE'
 export const DOCUMENT_TRYING_TO_UPDATE_BUT_DOESNT_EXIST_ON_SERVER_ERROR = 'TYRING TO UPDATE A DOCUMENT BUT IT WAS NOT FOUND ON THE SERVER - WILL CREATE'
-export const DOCUMENT_TRYING_TO_DELETE_BUT_DOESNT_EXIST_ON_SERVER_ERROR = 'TYRING TO DELETE A DOCUMENT BUT IT WAS NOT FOUND ON THE SERVER - WILL CREATE DELETION'
+export const DOCUMENT_TRYING_TO_DELETE_BUT_DOESNT_EXIST_ON_SERVER_ERROR = 'TYRING TO DELETE A DOCUMENT BUT IT WAS NOT FOUND ON THE SERVER - IGNORE'
 
 const queryDocsInValue = (collection: CollectionRef, field: string, array: any[]) => {
     return new Promise((res) => {
