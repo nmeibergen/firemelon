@@ -1,5 +1,5 @@
 import * as firebase from '@firebase/testing';
-import { syncFireMelon } from '../index';
+import { SyncFireMelon } from '../index';
 import { FirestoreModule } from '../types/firestore';
 import { SyncObj } from '../types/interfaces';
 import newDatabase, { Todo } from '../utils/schema';
@@ -39,7 +39,7 @@ describe('Options Excluded Fields', () => {
             });
         });
 
-        await syncFireMelon(firstDatabase, obj, app1, sessionId);
+        await new SyncFireMelon(firstDatabase, obj, app1, () => sessionId).synchronize();
 
         const todosSnapshot = await fireTodosRef.get();
 
@@ -84,11 +84,11 @@ describe('Options Custom Query', () => {
             });
         });
 
-        await syncFireMelon(firstDatabase, obj, app1, sessionId, () => new Date());
+        await new SyncFireMelon(firstDatabase, obj, app1, () => sessionId, () => new Date()).synchronize();
 
         await timeout(500);
 
-        await syncFireMelon(secondDatabase, obj, app1, 'secondSessionId', () => new Date());
+        await new SyncFireMelon(secondDatabase, obj, app1, () => 'secondSessionId', () => new Date()).synchronize();
 
         const secondMelonTodoCollection = await secondMelonTodosRef.query().fetch();
 
@@ -126,11 +126,11 @@ describe('Options Custom Query', () => {
             });
         });
 
-        await syncFireMelon(firstDatabase, obj, app1, sessionId, () => new Date());
+        await new SyncFireMelon(firstDatabase, obj, app1, () => sessionId, () => new Date()).synchronize();
 
         await timeout(500);
 
-        await syncFireMelon(secondDatabase, obj, app1, 'secondSessionId', () => new Date());
+        await new SyncFireMelon(secondDatabase, obj, app1, () => 'secondSessionId', () => new Date()).synchronize();
 
         const secondMelonTodoCollection = await secondMelonTodosRef.query().fetch();
 

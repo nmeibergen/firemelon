@@ -1,5 +1,5 @@
 import * as firebase from '@firebase/testing';
-import { syncFireMelon } from '../firestoreSync';
+import { SyncFireMelon } from '../firestoreSync';
 import { SyncObj } from '../types/interfaces';
 import newDatabase, { Todo } from '../utils/schema';
 import timeout from '../utils/timeout';
@@ -37,7 +37,7 @@ describe('Pull Created', () => {
             });
         });
 
-        await syncFireMelon(firstDatabase, obj, app1, sessionId, () => new Date());
+        await new SyncFireMelon(firstDatabase, obj, app1, () => sessionId, () => new Date()).synchronize();
 
         const secondMelonTodoCollectionBefore = await secondMelonTodosRef.query().fetch();
 
@@ -45,7 +45,7 @@ describe('Pull Created', () => {
 
         expect(secondMelonTodoCollectionBefore.length).toBe(0);
 
-        await syncFireMelon(secondDatabase, obj, app1, 'secondSessionId', () => new Date());
+        await new SyncFireMelon(secondDatabase, obj, app1, () => 'secondSessionId', () => new Date()).synchronize();
 
         const secondMelonTodoCollection = await secondMelonTodosRef.query().fetch();
 
@@ -79,11 +79,11 @@ describe('Pull Updated', () => {
             });
         });
 
-        await syncFireMelon(firstDatabase, obj, app1, sessionId, () => new Date());
+        await new SyncFireMelon(firstDatabase, obj, app1, () => sessionId, () => new Date()).synchronize();
 
         await timeout(500);
 
-        await syncFireMelon(secondDatabase, obj, app1, 'secondSessionId', () => new Date());
+        await new SyncFireMelon(secondDatabase, obj, app1, () => 'secondSessionId', () => new Date()).synchronize();
 
         const firstMelonTodoCollection = await firstMelonTodosRef.query().fetch();
         await firstDatabase.write(async () => {
@@ -91,11 +91,11 @@ describe('Pull Updated', () => {
                 todo.text = 'updated todo';
             });
         });
-        await syncFireMelon(firstDatabase, obj, app1, sessionId, () => new Date());
+        await new SyncFireMelon(firstDatabase, obj, app1, () => sessionId, () => new Date()).synchronize();
 
         await timeout(500);
 
-        await syncFireMelon(secondDatabase, obj, app1, 'secondSessionId', () => new Date());
+        await new SyncFireMelon(secondDatabase, obj, app1, () => 'secondSessionId', () => new Date()).synchronize();
 
         const secondMelonTodoCollection = await secondMelonTodosRef.query().fetch();
 
@@ -131,22 +131,22 @@ describe('Pull Deleted', () => {
             });
         });
 
-        await syncFireMelon(firstDatabase, obj, app1, sessionId, () => new Date());
+        await new SyncFireMelon(firstDatabase, obj, app1, () => sessionId, () => new Date()).synchronize();
 
         await timeout(500);
 
-        await syncFireMelon(secondDatabase, obj, app1, 'secondSessionId', () => new Date());
+        await new SyncFireMelon(secondDatabase, obj, app1, () => 'secondSessionId', () => new Date()).synchronize();
 
         const firstMelonTodoCollection = await firstMelonTodosRef.query().fetch();
         await firstDatabase.write(async () => {
             await firstMelonTodoCollection[0].markAsDeleted();
         });
 
-        await syncFireMelon(firstDatabase, obj, app1, sessionId, () => new Date());
+        await new SyncFireMelon(firstDatabase, obj, app1, () => sessionId, () => new Date()).synchronize();
 
         await timeout(500);
 
-        await syncFireMelon(secondDatabase, obj, app1, 'secondSessionId', () => new Date());
+        await new SyncFireMelon(secondDatabase, obj, app1, () => 'secondSessionId', () => new Date()).synchronize();
 
         const secondMelonTodoCollection = await secondMelonTodosRef.query().fetch();
 

@@ -1,6 +1,6 @@
 import * as firebase from '@firebase/testing';
 import { Model } from '@nozbe/watermelondb';
-import { syncFireMelon } from '../firestoreSync';
+import { SyncFireMelon } from '../firestoreSync';
 import { SyncObj } from '../types/interfaces';
 import newDatabase, { Todo, User } from '../utils/schema';
 import timeout from '../utils/timeout';
@@ -41,7 +41,7 @@ describe('Push Created', () => {
             }
         });
 
-        await syncFireMelon(db, obj, app1, sessionId, () => new Date());
+        await new SyncFireMelon(db, obj, app1, () => sessionId, () => new Date()).synchronize();
 
         await timeout(500);
 
@@ -73,7 +73,7 @@ describe('Push Created', () => {
             users: {},
         };
 
-        await syncFireMelon(db, obj, app1, sessionId, () => new Date());
+        await new SyncFireMelon(db, obj, app1, () => sessionId, () => new Date()).synchronize();
 
         const melonTodos = await melonTodosRef.query().fetch();
         const melonUsers = await melonUsersRef.query().fetch();
@@ -125,7 +125,7 @@ describe('Push Updated', () => {
             });
         });
 
-        await syncFireMelon(db, obj, app1, sessionId, () => new Date());
+        await new SyncFireMelon(db, obj, app1, () => sessionId, () => new Date()).synchronize();
 
         await timeout(500);
 
@@ -135,7 +135,7 @@ describe('Push Updated', () => {
             });
         });
 
-        await syncFireMelon(db, obj, app1, sessionId, () => new Date());
+        await new SyncFireMelon(db, obj, app1, () => sessionId, () => new Date()).synchronize();
 
         const todosSnapshot = await fireTodosRef.get();
 
@@ -179,7 +179,7 @@ describe('Push Deleted', () => {
             });
         });
 
-        await syncFireMelon(db, obj, app1, sessionId, () => new Date());
+        await new SyncFireMelon(db, obj, app1, () => sessionId, () => new Date()).synchronize();
 
         await timeout(500);
 
@@ -187,7 +187,7 @@ describe('Push Deleted', () => {
             await deleted.markAsDeleted();
         });
 
-        await syncFireMelon(db, obj, app1, sessionId, () => new Date());
+        await new SyncFireMelon(db, obj, app1, () => sessionId, () => new Date()).synchronize();
 
         const todosSnapshot = await fireTodosRef.get();
 

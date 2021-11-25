@@ -1,1 +1,1 @@
-export { syncFireMelon } from './firestoreSync';
+export { SyncFireMelon } from './firestoreSync';
