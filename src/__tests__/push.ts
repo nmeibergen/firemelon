@@ -35,7 +35,7 @@ describe('Push Created', () => {
 
         // Create 510 todos
         await db.write(async () => {
-            for(let i = 0; i<510; i++){
+            for (let i = 0; i < 510; i++) {
                 await melonTodosRef.create((todo: any) => {
                     todo.text = 'todo';
                 });
@@ -111,17 +111,23 @@ describe('Push Created', () => {
         const obj: SyncObj = {
             todos: {
                 asset: {
-                    create: createAsset,
-                    update: jest.fn(),
-                    delete: jest.fn(),
-                    pull: jest.fn()
+                    push: {
+                        create: createAsset,
+                        update: jest.fn(),
+                        delete: jest.fn(),
+                    },
+                    pull: {
+                        create: jest.fn(),
+                        update: jest.fn(),
+                        delete: jest.fn(),
+                    }
                 }
             },
             users: {},
         };
 
         await new SyncFireMelon(db, obj, app1, () => sessionId, () => new Date()).synchronize();
-        
+
         expect(createAsset).toBeCalledTimes(1);
 
         await timeout(500);
@@ -191,10 +197,16 @@ describe('Push Updated', () => {
         const obj: SyncObj = {
             todos: {
                 asset: {
-                    create: jest.fn(),
-                    update: updateAsset,
-                    delete: jest.fn(),
-                    pull: jest.fn()
+                    push: {
+                        create: jest.fn(),
+                        update: updateAsset,
+                        delete: jest.fn(),
+                    },
+                    pull: {
+                        create: jest.fn(),
+                        update: jest.fn(),
+                        delete: jest.fn(),
+                    }
                 }
             },
             users: {},
@@ -278,7 +290,7 @@ describe('Push Deleted', () => {
         expect(todosSnapshot.docs.length).toBe(2);
     });
 
-    it('will execute asset delete operation if requested', async () => { 
+    it('will execute asset delete operation if requested', async () => {
         const app1 = authedApp({ uid: 'owner' });
 
         const db = newDatabase();
@@ -288,10 +300,16 @@ describe('Push Deleted', () => {
         const obj: SyncObj = {
             todos: {
                 asset: {
-                    create: jest.fn(),
-                    update: jest.fn(),
-                    delete: deleteAsset,
-                    pull: jest.fn()
+                    push: {
+                        create: jest.fn(),
+                        update: jest.fn(),
+                        delete: deleteAsset
+                    },
+                    pull: {
+                        create: jest.fn(),
+                        update: jest.fn(),
+                        delete: jest.fn(),
+                    }
                 }
             },
             users: {},
