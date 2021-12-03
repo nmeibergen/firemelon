@@ -21,7 +21,7 @@ $ yarn add firemelon
 
 ## Compatibility
 
-Firemelon works with both [@firebase/firestore](https://www.npmjs.com/package/@firebase/firestore) and [@react-native-firebase/firestore](https://www.npmjs.com/package/@react-native-firebase/firestore)
+Firemelon works with both [@firebase/firestore](https://www.npmjs.com/package/@firebase/firestore) and [@react-native-firebase/firestore](https://www.npmjs.com/package/@react-native-firebase/firestore). The testing framework will only work with node version between 13 and 16, in particular it is not (yet) compatible with node version 17.
 
 ## Usage
 
