@@ -26,10 +26,11 @@ Firemelon works with both [@firebase/firestore](https://www.npmjs.com/package/@f
 ## Usage
 
 ```typescript
-import { syncFireMelon } from 'firemelon';
+import { SyncFireMelon } from 'firemelon';
 
 async () => {
-    await syncFireMelon(database, syncObject, firestore, sessionId, timefn());
+    const syncable = SyncFireMelon(database, syncObject, firestore, () => sessionId, timefn(), {...watermelonSyncArguments});
+    const syncable.synchronize();
 };
 ```
 
