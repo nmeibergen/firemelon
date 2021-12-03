@@ -120,7 +120,7 @@ export class SyncFireMelon {
         // First execute the asset changes, if that completes successfully proceed with the Watermelon changes.
         console.log(`FireMelon > pull assets > Will commit a total of ${assetOperations.length} asset changes`);
         for(const assetOperation of assetOperations){
-            await assetOperation()
+            await assetOperation();
         }
 
         const totalChanges = Object.keys(changes).reduce((prev, curr) =>
