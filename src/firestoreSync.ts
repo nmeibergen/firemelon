@@ -149,9 +149,13 @@ export class SyncFireMelon {
         let operationCounter = 0;
         let batchIndex = 0;
 
+        // 'Batch' assets
+        const assetOperations: any[] = [];
+
         map(changes, async (row, collectionName) => {
             // This iterates over all the collections, e.g. todos and users
             const collectionOptions = this.syncObj[collectionName];
+            const assetOptions = collectionOptions.asset ? collectionOptions.asset : false;
             const collectionRef = (collectionOptions.customPushCollection && collectionOptions.customPushCollection(this.db, collectionName)) || this.db.collection(collectionName);
 
             map(row, async (arrayOfChanged, changeName) => {
@@ -184,6 +188,8 @@ export class SyncFireMelon {
                                 sessionId,
                             });
 
+                            if(assetOptions) assetOperations.push(async () => assetOptions.create(data) )
+
                             operationCounter++;
 
                             break;
@@ -210,6 +216,8 @@ export class SyncFireMelon {
                                     sessionId,
                                     server_updated_at: this.getTimestamp(),
                                 });
+
+                                if(assetOptions) assetOperations.push(async () => assetOptions.update(data) )
 
                             } else {
                                 const warning = `${DOCUMENT_TRYING_TO_UPDATE_BUT_DOESNT_EXIST_ON_SERVER_ERROR} - document '${collectionName}' with id: '${data.id}'`
@@ -249,6 +257,8 @@ export class SyncFireMelon {
                                     sessionId,
                                 });
 
+                                if(assetOptions) assetOperations.push(async () => assetOptions.delete(data) )
+
                             } else {
                                 const warning = `${DOCUMENT_TRYING_TO_DELETE_BUT_DOESNT_EXIST_ON_SERVER_ERROR} - document '${collectionName}' with id: '${docId}'`
                                 console.warn(warning)
@@ -271,6 +281,12 @@ export class SyncFireMelon {
                 })
             })
         })
+
+        // First execute the asset changes, if that completes successfully proceed with the Watermelon changes.
+        console.log(`FireMelon > Push assets > Will commit a total of ${assetOperations.length} asset changes`);
+        for(const assetOperation of assetOperations){
+            await assetOperation();
+        }
 
         console.log(`FireMelon > Push > Will commit ${batchArray.length} batches`)
         let counter = 1
