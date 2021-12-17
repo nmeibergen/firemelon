@@ -68,13 +68,23 @@ export class SyncFireMelon {
                     || this.db.collection(collectionName);
 
                 const [createdSN, deletedSN, updatedSN] = await Promise.all([
-                    query.where('server_created_at', '>=', lastPulledAtTime).where('server_created_at', '<=', syncTimestamp).get(),
-                    query.where('server_deleted_at', '>=', lastPulledAtTime).where('server_deleted_at', '<=', syncTimestamp).get(),
-                    query.where('server_updated_at', '>=', lastPulledAtTime).where('server_updated_at', '<=', syncTimestamp).get(),
+                    query.where('sessionId', '!=', sessionId).where('server_created_at', '>=', lastPulledAtTime).where('server_created_at', '<=', syncTimestamp).get(),
+                    query.where('sessionId', '!=', sessionId).where('server_deleted_at', '>=', lastPulledAtTime).where('server_deleted_at', '<=', syncTimestamp).get(),
+                    query.where('sessionId', '!=', sessionId).where('server_updated_at', '>=', lastPulledAtTime).where('server_updated_at', '<=', syncTimestamp).get(),
                 ]);
 
+                /**
+                 * Rules:
+                 * 1. don't create something that will be deleted in the same session
+                 * 2. don't update something if it created
+                 * 
+                 * PS. It may seem convincing to also not delete something that was also just created. However, consider this case:
+                 * - device 1: create doc A and sync -> server_created_at will be slightly larger than lastPulledAt because pull occurs before push
+                 * - device 2: delete doc A and sync changes
+                 * - device 1: sync -> doc A will be recognized as created, because of the diff in lastPulledAt and server_created_at, if we now omit the deletion we will not have this important change!
+                 */
                 const created = createdSN.docs
-                    .filter((t) => t.data().sessionId !== sessionId)
+                    .filter((t) => !deletedSN.docs.find((doc) => doc.id === t.id))
                     .map((createdDoc) => {
                         const data = createdDoc.data();
 
@@ -88,7 +98,7 @@ export class SyncFireMelon {
 
                 const updated = updatedSN.docs
                     .filter(
-                        (t) => t.data().sessionId !== sessionId && !createdSN.docs.find((doc) => doc.id === t.id),
+                        (t) => !createdSN.docs.find((doc) => doc.id === t.id),
                     )
                     .map((updatedDoc) => {
                         const data = updatedDoc.data();
@@ -102,7 +112,6 @@ export class SyncFireMelon {
                     });
 
                 const deleted = deletedSN.docs
-                    .filter((t) => t.data().sessionId !== sessionId)
                     .map((deletedDoc) => {
                         const data = deletedDoc.data();
                         if(assetOptions) assetOperations.push(async () => assetOptions.pull.delete(data) )
@@ -273,7 +282,7 @@ export class SyncFireMelon {
                                     sessionId,
                                 });
 
-                                if(assetOptions) assetOperations.push(async () => assetOptions.push.delete(data) )
+                                if(assetOptions) assetOperations.push(async () => assetOptions.push.delete(docFromServer) )
 
                             } else {
                                 const warning = `${DOCUMENT_TRYING_TO_DELETE_BUT_DOESNT_EXIST_ON_SERVER_ERROR} - document '${collectionName}' with id: '${docId}'`
