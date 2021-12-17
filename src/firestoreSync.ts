@@ -68,9 +68,9 @@ export class SyncFireMelon {
                     || this.db.collection(collectionName);
 
                 const [createdSN, deletedSN, updatedSN] = await Promise.all([
-                    query.where('sessionId', '!=', sessionId).where('server_created_at', '>=', lastPulledAtTime).where('server_created_at', '<=', syncTimestamp).get(),
-                    query.where('sessionId', '!=', sessionId).where('server_deleted_at', '>=', lastPulledAtTime).where('server_deleted_at', '<=', syncTimestamp).get(),
-                    query.where('sessionId', '!=', sessionId).where('server_updated_at', '>=', lastPulledAtTime).where('server_updated_at', '<=', syncTimestamp).get(),
+                    query.where('server_created_at', '>=', lastPulledAtTime).where('server_created_at', '<=', syncTimestamp).get(),
+                    query.where('server_deleted_at', '>=', lastPulledAtTime).where('server_deleted_at', '<=', syncTimestamp).get(),
+                    query.where('server_updated_at', '>=', lastPulledAtTime).where('server_updated_at', '<=', syncTimestamp).get(),
                 ]);
 
                 /**
@@ -84,7 +84,7 @@ export class SyncFireMelon {
                  * - device 1: sync -> doc A will be recognized as created, because of the diff in lastPulledAt and server_created_at, if we now omit the deletion we will not have this important change!
                  */
                 const created = createdSN.docs
-                    .filter((t) => !deletedSN.docs.find((doc) => doc.id === t.id))
+                    .filter((t) => t.data().sessionId !== sessionId && !deletedSN.docs.find((doc) => doc.id === t.id))
                     .map((createdDoc) => {
                         const data = createdDoc.data();
 
@@ -98,7 +98,7 @@ export class SyncFireMelon {
 
                 const updated = updatedSN.docs
                     .filter(
-                        (t) => !createdSN.docs.find((doc) => doc.id === t.id),
+                        (t) => t.data().sessionId !== sessionId && !createdSN.docs.find((doc) => doc.id === t.id),
                     )
                     .map((updatedDoc) => {
                         const data = updatedDoc.data();
@@ -112,6 +112,7 @@ export class SyncFireMelon {
                     });
 
                 const deleted = deletedSN.docs
+                    .filter((t) => t.data().sessionId !== sessionId)
                     .map((deletedDoc) => {
                         const data = deletedDoc.data();
                         if(assetOptions) assetOperations.push(async () => assetOptions.pull.delete(data) )
