@@ -28,7 +28,7 @@ export interface CollectionRef extends Query {
     doc: (documentName: string) => DocumentRef;
 }
 
-export type WhereFilterOp = '<' | '<=' | '==' | '>=' | '>' | 'array-contains';
+export type WhereFilterOp = '<' | '<=' | '==' | '!=' | '>=' | '>' | 'array-contains' ;
 
 export interface Transaction {
     delete(documentRef: any): Transaction;
