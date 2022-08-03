@@ -91,7 +91,7 @@ export class SyncFireMelon {
                         const ommited = [...defaultExcluded, ...(collectionOptions.excludedFields || [])];
                         const createdItem = omit(data, ommited);
 
-                        if(assetOptions) assetOperations.push(async () => assetOptions.pull.create(data) )
+                        if (assetOptions) assetOperations.push(async () => assetOptions.pull.create(data))
 
                         return createdItem;
                     });
@@ -106,7 +106,7 @@ export class SyncFireMelon {
                         const ommited = [...defaultExcluded, ...(collectionOptions.excludedFields || [])];
                         const updatedItem = omit(data, ommited);
 
-                        if(assetOptions) assetOperations.push(async () => assetOptions.pull.update(data) )
+                        if (assetOptions) assetOperations.push(async () => assetOptions.pull.update(data))
 
                         return updatedItem;
                     });
@@ -115,7 +115,7 @@ export class SyncFireMelon {
                     .filter((t) => t.data().sessionId !== sessionId)
                     .map((deletedDoc) => {
                         const data = deletedDoc.data();
-                        if(assetOptions) assetOperations.push(async () => assetOptions.pull.delete(data) )
+                        if (assetOptions) assetOperations.push(async () => assetOptions.pull.delete(data))
 
                         return deletedDoc.id;
                     });
@@ -129,7 +129,7 @@ export class SyncFireMelon {
 
         // First execute the asset changes, if that completes successfully proceed with the Watermelon changes.
         console.log(`FireMelon > pull assets > Will commit a total of ${assetOperations.length} asset changes`);
-        for(const assetOperation of assetOperations){
+        for (const assetOperation of assetOperations) {
             await assetOperation();
         }
 
@@ -139,7 +139,7 @@ export class SyncFireMelon {
             0);
         console.log(`FireMelon > Pull > Total changes: ${totalChanges}`);
 
-        return {changes, totalChanges}
+        return { changes, totalChanges }
     }
 
     // Private!!
@@ -214,7 +214,7 @@ export class SyncFireMelon {
                                 sessionId,
                             });
 
-                            if(assetOptions) assetOperations.push(async () => assetOptions.push.create(data) )
+                            if (assetOptions) assetOperations.push(async () => assetOptions.push.create(data))
 
                             operationCounter++;
 
@@ -243,7 +243,7 @@ export class SyncFireMelon {
                                     server_updated_at: this.getTimestamp(),
                                 });
 
-                                if(assetOptions) assetOperations.push(async () => assetOptions.push.update(data) )
+                                if (assetOptions) assetOperations.push(async () => assetOptions.push.update(data))
 
                             } else {
                                 const warning = `${DOCUMENT_TRYING_TO_UPDATE_BUT_DOESNT_EXIST_ON_SERVER_ERROR} - document '${collectionName}' with id: '${data.id}'`
@@ -283,7 +283,7 @@ export class SyncFireMelon {
                                     sessionId,
                                 });
 
-                                if(assetOptions) assetOperations.push(async () => assetOptions.push.delete(docFromServer) )
+                                if (assetOptions) assetOperations.push(async () => assetOptions.push.delete(docFromServer))
 
                             } else {
                                 const warning = `${DOCUMENT_TRYING_TO_DELETE_BUT_DOESNT_EXIST_ON_SERVER_ERROR} - document '${collectionName}' with id: '${docId}'`
@@ -310,7 +310,7 @@ export class SyncFireMelon {
 
         // First execute the asset changes, if that completes successfully proceed with the Watermelon changes.
         console.log(`FireMelon > Push assets > Will commit a total of ${assetOperations.length} asset changes`);
-        for(const assetOperation of assetOperations){
+        for (const assetOperation of assetOperations) {
             await assetOperation()
         }
 
@@ -328,7 +328,8 @@ export class SyncFireMelon {
                 console.log('FireMelon > Push > Nothing to push')
             }
         } catch (error) {
-            console.error(error);
+            //@ts-ignore
+            throw new Error(error.message)
         }
     }
 
@@ -357,8 +358,13 @@ export class SyncFireMelon {
             if (retry) {
                 console.log("Firemelon > Sync error > retry sync");
                 retry = false;
-                await sync();
-                return true
+                try {
+                    await sync();
+                    return true
+                } catch (error) {
+                    console.error(error)
+                    return false
+                }
             } else {
                 console.log("Firemelon > Sync failed");
                 console.error(error);
