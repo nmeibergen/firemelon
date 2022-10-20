@@ -4,13 +4,6 @@ import { keys, map, omit } from 'lodash';
 import { CollectionRef, FirestoreModule } from './types/firestore';
 import { Item, SyncObj } from './types/interfaces';
 
-/* const ex: SyncObj = {
-    todos: {
-        excludedFields: [],
-        customQuery: firestore.collection('todos').where('color', '==', 'red'),
-    },
-} */
-
 const defaultExcluded = ['_status', '_changed'];
 
 export class SyncFireMelon {
@@ -46,6 +39,9 @@ export class SyncFireMelon {
 
     async pullChanges({ lastPulledAt = undefined, sessionId = undefined, syncTimestamp = new Date() }:
         { lastPulledAt?: number | undefined | null, sessionId?: string | undefined, syncTimestamp?: Date }) {
+
+        console.log("FireMelon > Start pull");
+
         if (lastPulledAt === undefined) {
             lastPulledAt = await this.lastPulledAt;
         }
@@ -54,6 +50,7 @@ export class SyncFireMelon {
         }
 
         const lastPulledAtTime = new Date(lastPulledAt || 0);
+        console.log(`FireMelon > last pulled at: ${lastPulledAt}`);
         let changes = {};
 
         const collections = keys(this.syncObj);
@@ -67,11 +64,30 @@ export class SyncFireMelon {
                 const query = (collectionOptions.customPullQuery && collectionOptions.customPullQuery(this.db, collectionName))
                     || this.db.collection(collectionName);
 
-                const [createdSN, deletedSN, updatedSN] = await Promise.all([
-                    query.where('server_created_at', '>=', lastPulledAtTime).where('server_created_at', '<=', syncTimestamp).get(),
-                    query.where('server_deleted_at', '>=', lastPulledAtTime).where('server_deleted_at', '<=', syncTimestamp).get(),
-                    query.where('server_updated_at', '>=', lastPulledAtTime).where('server_updated_at', '<=', syncTimestamp).get(),
-                ]);
+                console.log(`FireMelon > WILL START PULL FOR ${collectionName}`);
+
+                /**
+                 * Make sure to create the relevant indices
+                 */
+                const [createdSN, updatedSN, deletedSN] = lastPulledAt == null
+                    ? await Promise.all([
+                        query.where('server_created_at', '<=', syncTimestamp).where('isDeleted', '==', false).get(),
+                        { docs: [] },
+                        { docs: [] }
+                    ])
+                    : await Promise.all([
+                        // CREATED - 
+                        query.where('server_created_at', '>=', lastPulledAtTime)
+                            .where('server_created_at', '<=', syncTimestamp)
+                            .where('isDeleted', '==', false).get(),
+                        // UPDATED 
+                        query.where('server_updated_at', '>=', lastPulledAtTime)
+                            .where('server_updated_at', '<=', syncTimestamp)
+                            .where('isDeleted', '==', false).get(),
+                        // DELETED
+                        query.where('server_deleted_at', '>=', lastPulledAtTime)
+                            .where('server_deleted_at', '<=', syncTimestamp).get(),
+                    ]);
 
                 /**
                  * Rules:
@@ -83,43 +99,64 @@ export class SyncFireMelon {
                  * - device 2: delete doc A and sync changes
                  * - device 1: sync -> doc A will be recognized as created, because of the diff in lastPulledAt and server_created_at, if we now omit the deletion we will not have this important change!
                  */
-                const created = createdSN.docs
-                    .filter((t) => t.data().sessionId !== sessionId && !deletedSN.docs.find((doc) => doc.id === t.id))
-                    .map((createdDoc) => {
-                        const data = createdDoc.data();
-
+                let initialCreated: SyncObj[] = []
+                const created = createdSN.docs.reduce((prev, curr) => {
+                    const data = curr.data();
+                    if (data.sessionId !== sessionId) {
                         const ommited = [...defaultExcluded, ...(collectionOptions.excludedFields || [])];
                         const createdItem = omit(data, ommited);
 
-                        if (assetOptions) assetOperations.push(async () => assetOptions.pull.create(data))
+                        if (assetOptions && assetOptions.pull?.create) {
+                            //@ts-ignore
+                            assetOperations.push(async () => assetOptions.pull.create(data))
+                        }
 
-                        return createdItem;
-                    });
+                        prev.push(createdItem);
+                    }
 
-                const updated = updatedSN.docs
-                    .filter(
-                        (t) => t.data().sessionId !== sessionId && !createdSN.docs.find((doc) => doc.id === t.id),
-                    )
-                    .map((updatedDoc) => {
-                        const data = updatedDoc.data();
+                    return prev
+                }, initialCreated)
 
+                let initialUpdated: SyncObj[] = []
+                const updated = updatedSN.docs.reduce((prev, curr) => {
+                    const data = curr.data();
+                    /**
+                     * @todo - this should filter out for everything that is in created. But it doesn't seem to do so with the current error.
+                     */
+                    if (data.sessionId !== sessionId
+                        && !(created.find(val => val.id === data.id))
+                        // && data.server_created_at < lastPulledAtTime
+                    ) {
                         const ommited = [...defaultExcluded, ...(collectionOptions.excludedFields || [])];
                         const updatedItem = omit(data, ommited);
 
-                        if (assetOptions) assetOperations.push(async () => assetOptions.pull.update(data))
+                        if (assetOptions && assetOptions.pull?.update) {
+                            //@ts-ignore
+                            assetOperations.push(async () => assetOptions.pull.update(data))
+                        }
 
-                        return updatedItem;
-                    });
+                        prev.push(updatedItem);
+                    }
 
-                const deleted = deletedSN.docs
-                    .filter((t) => t.data().sessionId !== sessionId)
-                    .map((deletedDoc) => {
-                        const data = deletedDoc.data();
-                        if (assetOptions) assetOperations.push(async () => assetOptions.pull.delete(data))
+                    return prev
+                }, initialUpdated)
 
-                        return deletedDoc.id;
-                    });
+                let initialDeleted: string[] = [];
+                const deleted = deletedSN.docs.reduce((prev, curr) => {
+                    const data = curr.data();
+                    if (data.sessionId !== sessionId) {
+                        if (assetOptions && assetOptions.pull?.delete) {
+                            //@ts-ignore
+                            assetOperations.push(async () => assetOptions.pull.delete(data))
+                        }
 
+                        prev.push(data.id);
+                    }
+
+                    return prev
+                }, initialDeleted)
+
+                console.log(`FireMelon > ${collectionName} > created=${created.length}, deleted=${deleted.length}, updated=${updated.length}`)
                 changes = {
                     ...changes,
                     [collectionName]: { created, deleted, updated },
@@ -145,6 +182,8 @@ export class SyncFireMelon {
     // Private!!
     async _pushChanges({ changes, sessionId, lastPulledAt }:
         { changes: SyncDatabaseChangeSet, sessionId: string, lastPulledAt: number }) {
+
+        console.log(`FireMelon > Start push`);
 
         const totalChanges = Object.keys(changes).reduce((prev, curr) =>
             prev + changes[curr].created.length + changes[curr].deleted.length + changes[curr].updated.length,
@@ -174,6 +213,7 @@ export class SyncFireMelon {
         batchArray.push(this.db.batch());
         let operationCounter = 0;
         let batchIndex = 0;
+        const maxPerBatch = 500; // This is a firebase limit
 
         // 'Batch' assets
         const assetOperations: (() => Promise<void>)[] = [];
@@ -210,11 +250,15 @@ export class SyncFireMelon {
                             batchArray[batchIndex].set(docRef, {
                                 ...data,
                                 server_created_at: this.getTimestamp(),
-                                server_updated_at: this.getTimestamp(),
+                                // server_updated_at: this.getTimestamp(), // delete this so that we do not get updated items when these are merely created
+                                isDeleted: false,
                                 sessionId,
                             });
 
-                            if (assetOptions) assetOperations.push(async () => assetOptions.push.create(data))
+                            if (assetOptions && assetOptions.push?.create) {
+                                //@ts-ignore
+                                assetOperations.push(async () => assetOptions.push.create(data))
+                            }
 
                             operationCounter++;
 
@@ -243,7 +287,10 @@ export class SyncFireMelon {
                                     server_updated_at: this.getTimestamp(),
                                 });
 
-                                if (assetOptions) assetOperations.push(async () => assetOptions.push.update(data))
+                                if (assetOptions && assetOptions.push?.update) {
+                                    //@ts-ignore
+                                    assetOperations.push(async () => assetOptions.push.update(data))
+                                }
 
                             } else {
                                 const warning = `${DOCUMENT_TRYING_TO_UPDATE_BUT_DOESNT_EXIST_ON_SERVER_ERROR} - document '${collectionName}' with id: '${data.id}'`
@@ -252,6 +299,7 @@ export class SyncFireMelon {
                                 batchArray[batchIndex].set(docRef, {
                                     ...data,
                                     sessionId,
+                                    isDeleted: false,
                                     server_updated_at: this.getTimestamp(),
                                 });
                             }
@@ -283,7 +331,10 @@ export class SyncFireMelon {
                                     sessionId,
                                 });
 
-                                if (assetOptions) assetOperations.push(async () => assetOptions.push.delete(docFromServer))
+                                if (assetOptions && assetOptions.push?.delete) {
+                                    //@ts-ignore
+                                    assetOperations.push(async () => assetOptions.push.delete(docFromServer))
+                                }
 
                             } else {
                                 const warning = `${DOCUMENT_TRYING_TO_DELETE_BUT_DOESNT_EXIST_ON_SERVER_ERROR} - document '${collectionName}' with id: '${docId}'`
@@ -298,7 +349,7 @@ export class SyncFireMelon {
                     }
 
                     // Initialize a new batch if needed -> firestore allows 500 writes per batch.
-                    if (operationCounter === 499) {
+                    if (operationCounter === (maxPerBatch - 1)) {
                         batchArray.push(this.db.batch());
                         batchIndex++;
                         operationCounter = 0;
@@ -356,17 +407,20 @@ export class SyncFireMelon {
             return true
         } catch (error) {
             if (retry) {
-                console.log("Firemelon > Sync error > retry sync");
+                console.log("FireMelon > Sync error > Retry sync");
                 retry = false;
                 try {
+                    console.log("FireMelon > Sync > execute the retry");
                     await sync();
+                    console.log("FireMelon > Sync > Retry sync successful > return true");
                     return true
                 } catch (error) {
+                    console.log("FireMelon > Sync failed");
                     console.error(error)
                     return false
                 }
             } else {
-                console.log("Firemelon > Sync failed");
+                console.log("FireMelon > Sync failed");
                 console.error(error);
                 return false
             }
