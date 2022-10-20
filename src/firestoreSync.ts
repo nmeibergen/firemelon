@@ -190,23 +190,23 @@ export class SyncFireMelon {
             0);
         console.log(`FireMelon > Push > Total changes: ${totalChanges}`);
 
-        let docRefs = await Promise.all(Object.keys(changes).map(async (collectionName: string) => {
-            const deletedIds = changes[collectionName].deleted.map(id => id);
-            const createdIds = changes[collectionName].created.map(data => data.id);
-            const updatedIds = changes[collectionName].updated.map(data => data.id);
+        // let docRefs = await Promise.all(Object.keys(changes).map(async (collectionName: string) => {
+        //     const deletedIds = changes[collectionName].deleted.map(id => id);
+        //     const createdIds = changes[collectionName].created.map(data => data.id);
+        //     const updatedIds = changes[collectionName].updated.map(data => data.id);
 
-            const collectionOptions = this.syncObj[collectionName];
-            const collectionRef = (collectionOptions.customPushCollection && collectionOptions.customPushCollection(this.db, collectionName)) || this.db.collection(collectionName)
+        //     const collectionOptions = this.syncObj[collectionName];
+        //     const collectionRef = (collectionOptions.customPushCollection && collectionOptions.customPushCollection(this.db, collectionName)) || this.db.collection(collectionName)
 
-            const created = createdIds.length > 0 ? (await queryDocsInValue(collectionRef, 'id', createdIds)) : [];
-            const deleted = deletedIds.length > 0 ? (await queryDocsInValue(collectionRef, 'id', deletedIds)) : [];
-            const updated = updatedIds.length > 0 ? (await queryDocsInValue(collectionRef, 'id', updatedIds)) : [];
+        //     const created = createdIds.length > 0 ? (await queryDocsInValue(collectionRef, 'id', createdIds)) : [];
+        //     const deleted = deletedIds.length > 0 ? (await queryDocsInValue(collectionRef, 'id', deletedIds)) : [];
+        //     const updated = updatedIds.length > 0 ? (await queryDocsInValue(collectionRef, 'id', updatedIds)) : [];
 
-            return { [collectionName]: { created, deleted, updated } }
-        }))
+        //     return { [collectionName]: { created, deleted, updated } }
+        // }))
 
-        // collapse to single object: {users: {deleted: [], updated: []}, todos: {deleted:[], updated:[]}}
-        docRefs = Object.assign({}, ...docRefs);
+        // // collapse to single object: {users: {deleted: [], updated: []}, todos: {deleted:[], updated:[]}}
+        // docRefs = Object.assign({}, ...docRefs);
 
         // Batch sync
         const batchArray: any[] = [];
@@ -240,13 +240,7 @@ export class SyncFireMelon {
 
                     switch (changeName) {
                         case 'created': {
-                            //@ts-ignore
-                            const docFromServer = docRefs[collectionName].created.find(doc => doc.id == data.id)
-                            if (docFromServer) {
-                                const warning = `${DOCUMENT_TRYING_TO_CREATE_ALREADY_EXISTS_ON_SERVER_ERROR} - document '${collectionName}' with id: '${data.id}'`
-                                console.warn(warning);
-                            }
-
+                            
                             batchArray[batchIndex].set(docRef, {
                                 ...data,
                                 server_created_at: this.getTimestamp(),
@@ -266,44 +260,32 @@ export class SyncFireMelon {
                         }
 
                         case 'updated': {
-                            //@ts-ignore
-                            const docFromServer = docRefs[collectionName].updated.find(doc => doc.id == data.id)
-                            if (docFromServer) {
-                                const { server_deleted_at: deletedAt, server_updated_at: updatedAt } = docFromServer;
 
-                                if (updatedAt.toDate() > lastPulledAt) {
-                                    const error = `${DOCUMENT_WAS_MODIFIED_ERROR} - document '${collectionName}' with id: '${data.id}' - updatedAt: ${updatedAt.toDate()}, lastPulledAt: ${lastPulledAt}`
-                                    throw new Error(error);
-                                }
-
-                                if (deletedAt) throw new Error(DOCUMENT_WAS_DELETED_ERROR); // In line with 3a of Push Implementation (here)[https://nozbe.github.io/WatermelonDB/Advanced/Sync.html]
-                                // if (deletedAt?.toDate() > lastPulledAt) {
-                                //     throw new Error(DOCUMENT_WAS_DELETED_ERROR);
-                                // }
-
-                                batchArray[batchIndex].update(docRef, {
-                                    ...data,
-                                    sessionId,
-                                    server_updated_at: this.getTimestamp(),
-                                });
-
-                                if (assetOptions && assetOptions.push?.update) {
-                                    //@ts-ignore
-                                    assetOperations.push(async () => assetOptions.push.update(data))
-                                }
-
-                            } else {
-                                const warning = `${DOCUMENT_TRYING_TO_UPDATE_BUT_DOESNT_EXIST_ON_SERVER_ERROR} - document '${collectionName}' with id: '${data.id}'`
-                                console.warn(warning)
-
-                                batchArray[batchIndex].set(docRef, {
-                                    ...data,
-                                    sessionId,
-                                    isDeleted: false,
-                                    server_updated_at: this.getTimestamp(),
-                                });
+                            if (assetOptions && assetOptions.push?.update) {
+                                //@ts-ignore
+                                assetOperations.push(async () => assetOptions.push.update(data))
                             }
 
+                            /**
+                             * @note We do not throw any error if during pull and this subsequent push some data has changed. We will simply merge in the data. 
+                             * This means that data that was pushed by another device exactly during the pull/push of this device may be erased. Yes, this is 
+                             * a bug, and should be resolved.
+                             * 
+                             * The difficulty here is being able to run as a batch and still get information about the 'live' value the last update date on the server.
+                             * Preferably we'd be able to do such check on the server. 
+                             * 
+                             */
+
+                            /**
+                             * we merge here, to make sure that if the document was deleted, that information remains alive on the server. 
+                             * Doing so best matches point 3a of Push Implementation (here)[https://nozbe.github.io/WatermelonDB/Advanced/Sync.html]
+                             *  */
+                            batchArray[batchIndex].set(docRef, {
+                                ...data,
+                                sessionId,
+                                // isDeleted: false,
+                                server_updated_at: this.getTimestamp(),
+                            }, { merge: true });
 
                             operationCounter++;
 
@@ -312,35 +294,54 @@ export class SyncFireMelon {
 
                         case 'deleted': {
 
-                            //@ts-ignore
-                            const docFromServer = docRefs[collectionName].deleted.find(doc => doc.id == wmObj.toString())
-                            if (docFromServer) {
-                                const { server_deleted_at: deletedAt, server_updated_at: updatedAt } = docFromServer;
+                            /**
+                             * @note The same note as on the updated case holds
+                             * 
+                             * Also, if the document does not exist on the server, we may simply ignore creating it. However, doing so requires us to check existence on the server, 
+                             * and that requires getting al data from the server upfront, which on its turn is expensive. Better to simply allow the creation of this deleted item 
+                             * on the server and with a certain frequency clear the firestore from deleted items. This is something you will have to do anyways!
+                             */
+                            batchArray[batchIndex].set(docRef, {
+                                ...data,
+                                server_deleted_at: this.getTimestamp(),
+                                isDeleted: true,
+                                sessionId,
+                            }, { merge: true });
 
-                                if (updatedAt.toDate() > lastPulledAt) {
-                                    throw new Error(DOCUMENT_WAS_MODIFIED_ERROR);
-                                }
-
-                                if (deletedAt?.toDate() > lastPulledAt) {
-                                    throw new Error(DOCUMENT_WAS_DELETED_ERROR);
-                                }
-
-                                batchArray[batchIndex].update(docRef, {
-                                    server_deleted_at: this.getTimestamp(),
-                                    isDeleted: true,
-                                    sessionId,
-                                });
-
-                                if (assetOptions && assetOptions.push?.delete) {
-                                    //@ts-ignore
-                                    assetOperations.push(async () => assetOptions.push.delete(docFromServer))
-                                }
-
-                            } else {
-                                const warning = `${DOCUMENT_TRYING_TO_DELETE_BUT_DOESNT_EXIST_ON_SERVER_ERROR} - document '${collectionName}' with id: '${docId}'`
-                                console.warn(warning)
-                                // Will ignore in line with 4 of Push Implementation (here)[https://nozbe.github.io/WatermelonDB/Advanced/Sync.html]
+                            if (assetOptions && assetOptions.push?.delete) {
+                                //@ts-ignore
+                                assetOperations.push(async () => assetOptions.push.delete(docFromServer))
                             }
+
+                            // //@ts-ignore
+                            // const docFromServer = docRefs[collectionName].deleted.find(doc => doc.id == wmObj.toString())
+                            // if (docFromServer) {
+                            //     const { server_deleted_at: deletedAt, server_updated_at: updatedAt } = docFromServer;
+
+                            //     if (updatedAt.toDate() > lastPulledAt) {
+                            //         throw new Error(DOCUMENT_WAS_MODIFIED_ERROR);
+                            //     }
+
+                            //     if (deletedAt?.toDate() > lastPulledAt) {
+                            //         throw new Error(DOCUMENT_WAS_DELETED_ERROR);
+                            //     }
+
+                            //     batchArray[batchIndex].update(docRef, {
+                            //         server_deleted_at: this.getTimestamp(),
+                            //         isDeleted: true,
+                            //         sessionId,
+                            //     });
+
+                            //     if (assetOptions && assetOptions.push?.delete) {
+                            //         //@ts-ignore
+                            //         assetOperations.push(async () => assetOptions.push.delete(docFromServer))
+                            //     }
+
+                            // } else {
+                            //     const warning = `${DOCUMENT_TRYING_TO_DELETE_BUT_DOESNT_EXIST_ON_SERVER_ERROR} - document '${collectionName}' with id: '${docId}'`
+                            //     console.warn(warning)
+                            //     // Will ignore in line with 4 of Push Implementation (here)[https://nozbe.github.io/WatermelonDB/Advanced/Sync.html]
+                            // }
 
                             operationCounter++;
 
