@@ -5,15 +5,15 @@ export interface Item {
 }
 
 export interface AssetOptions {
-    push: {
-        create: (data: any) => Promise<void>
-        update: (data: any) => Promise<void>
-        delete: (data: any) => Promise<void>
+    push?: {
+        create?: (data: any) => Promise<void>
+        update?: (data: any) => Promise<void>
+        delete?: (data: any) => Promise<void>
     }
-    pull: {
-        create: (data: any) => Promise<void>
-        update: (data: any) => Promise<void>
-        delete: (data: any) => Promise<void>
+    pull?: {
+        create?: (data: any) => Promise<void>
+        update?: (data: any) => Promise<void>
+        delete?: (data: any) => Promise<void>
     }
 }
 
