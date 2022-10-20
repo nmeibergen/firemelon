@@ -1,5 +1,6 @@
 import * as firebase from '@firebase/testing';
 import { Model } from '@nozbe/watermelondb';
+import { create } from 'lodash';
 import { SyncFireMelon } from '../firestoreSync';
 import { SyncObj } from '../types/interfaces';
 import newDatabase, { Todo, User } from '../utils/schema';
@@ -34,7 +35,7 @@ describe('Push Created', () => {
 
         // Create 510 todos
         await db.write(async () => {
-            for(let i = 0; i<510; i++){
+            for (let i = 0; i < 510; i++) {
                 await melonTodosRef.create((todo: any) => {
                     todo.text = 'todo';
                 });
@@ -93,6 +94,44 @@ describe('Push Created', () => {
 
         await timeout(500);
     });
+
+    it('will execute asset create operation if requested', async () => {
+        const app1 = authedApp({ uid: 'owner' });
+
+        const db = newDatabase();
+        const melonTodosRef = db.collections.get<Todo>('todos');
+
+        await db.write(async () => {
+            await melonTodosRef.create((todo: any) => {
+                todo.text = 'todo 1';
+            });
+        });
+
+        const createAsset = jest.fn();
+        const obj: SyncObj = {
+            todos: {
+                asset: {
+                    push: {
+                        create: createAsset,
+                        update: jest.fn(),
+                        delete: jest.fn(),
+                    },
+                    pull: {
+                        create: jest.fn(),
+                        update: jest.fn(),
+                        delete: jest.fn(),
+                    }
+                }
+            },
+            users: {},
+        };
+
+        await new SyncFireMelon(db, obj, app1, () => sessionId, () => new Date()).synchronize();
+
+        expect(createAsset).toBeCalledTimes(1);
+
+        await timeout(500);
+    })
 });
 
 describe('Push Updated', () => {
@@ -147,6 +186,54 @@ describe('Push Updated', () => {
 
         expect(todosSnapshot.docs.length).toBe(2);
     });
+
+    it('will execute asset update operation if requested', async () => {
+        const app1 = authedApp({ uid: 'owner' });
+
+        const db = newDatabase();
+        const melonTodosRef = db.collections.get<Todo>('todos');
+
+        const updateAsset = jest.fn();
+        const obj: SyncObj = {
+            todos: {
+                asset: {
+                    push: {
+                        create: jest.fn(),
+                        update: updateAsset,
+                        delete: jest.fn(),
+                    },
+                    pull: {
+                        create: jest.fn(),
+                        update: jest.fn(),
+                        delete: jest.fn(),
+                    }
+                }
+            },
+            users: {},
+        };
+
+        let updated: Model;
+
+        await db.write(async () => {
+            updated = await melonTodosRef.create((todo: any) => {
+                todo.text = 'todo 1';
+            });
+        });
+
+        await new SyncFireMelon(db, obj, app1, () => sessionId, () => new Date()).synchronize();
+
+        await timeout(500);
+
+        await db.write(async () => {
+            await updated.update((todo: any) => {
+                todo.text = 'updated todo';
+            });
+        });
+
+        await new SyncFireMelon(db, obj, app1, () => sessionId, () => new Date()).synchronize();
+
+        expect(updateAsset).toBeCalledTimes(1);
+    })
 });
 
 describe('Push Deleted', () => {
@@ -202,4 +289,54 @@ describe('Push Deleted', () => {
 
         expect(todosSnapshot.docs.length).toBe(2);
     });
+
+    it('will execute asset delete operation if requested', async () => {
+        const app1 = authedApp({ uid: 'owner' });
+
+        const db = newDatabase();
+        const melonTodosRef = db.collections.get<Todo>('todos');
+
+        const deleteAsset = jest.fn();
+        const obj: SyncObj = {
+            todos: {
+                asset: {
+                    push: {
+                        create: jest.fn(),
+                        update: jest.fn(),
+                        delete: deleteAsset
+                    },
+                    pull: {
+                        create: jest.fn(),
+                        update: jest.fn(),
+                        delete: jest.fn(),
+                    }
+                }
+            },
+            users: {},
+        };
+
+        let deleted: Model;
+
+        await db.write(async () => {
+            await melonTodosRef.create((todo: any) => {
+                todo.text = 'todo 1';
+            });
+
+            deleted = await melonTodosRef.create((todo: any) => {
+                todo.text = 'todo 2';
+            });
+        });
+
+        await new SyncFireMelon(db, obj, app1, () => sessionId, () => new Date()).synchronize();
+
+        await timeout(500);
+
+        await db.write(async () => {
+            await deleted.markAsDeleted();
+        });
+
+        await new SyncFireMelon(db, obj, app1, () => sessionId, () => new Date()).synchronize();
+
+        expect(deleteAsset).toBeCalledTimes(1);
+    })
 });
