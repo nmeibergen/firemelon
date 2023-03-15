@@ -28,13 +28,18 @@ export interface CollectionRef extends Query {
     doc: (documentName: string) => DocumentRef;
 }
 
-export type WhereFilterOp = '<' | '<=' | '==' | '!=' | '>=' | '>' | 'array-contains' ;
+export type WhereFilterOp = '<' | '<=' | '==' | '!=' | '>=' | '>' | 'array-contains' | 'in';
 
 export interface Transaction {
     delete(documentRef: any): Transaction;
     get(documentRef: any): Promise<DocumentSnapshot>;
     set(documentRef: any, data: { [key: string]: any }): Transaction;
     update(documentRef: any, data: { [key: string]: any }): Transaction;
+}
+
+export interface Firestore {
+    (): FirestoreModule
+    FieldPath: { documentId: () => string }
 }
 
 export interface FirestoreModule {

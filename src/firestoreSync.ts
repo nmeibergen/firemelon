@@ -1,14 +1,16 @@
-import { Database, Q } from '@nozbe/watermelondb';
+import { Database } from '@nozbe/watermelondb';
 import { SyncDatabaseChangeSet, synchronize as watermelonSync } from '@nozbe/watermelondb/sync';
 import { keys, map, omit } from 'lodash';
-import { CollectionRef, FirestoreModule } from './types/firestore';
+import { CollectionRef, Firestore, FirestoreModule } from './types/firestore';
 import { Item, SyncObj } from './types/interfaces';
+import { checkIdsExistence } from './utils/helpers';
 
 const defaultExcluded = ['_status', '_changed'];
 
 export class SyncFireMelon {
     database: Database;
     syncObj: SyncObj;
+    firestore: Firestore;
     db: FirestoreModule;
     createSessionId: () => string;
     getTimestamp: () => any = () => new Date();
@@ -17,14 +19,15 @@ export class SyncFireMelon {
     constructor(
         database: Database,
         syncObj: SyncObj,
-        db: FirestoreModule,
+        firestore: Firestore,
         createSessionId: () => string,
         getTimestamp: () => any = () => new Date(),
         watermelonSyncArgs: Object = {}
     ) {
         this.database = database;
         this.syncObj = syncObj;
-        this.db = db;
+        this.db = firestore();
+        this.firestore = firestore;
         this.createSessionId = createSessionId;
         this.getTimestamp = getTimestamp;
         this.watermelonSyncArgs = watermelonSyncArgs;
@@ -99,7 +102,6 @@ export class SyncFireMelon {
                  * - device 2: delete doc A and sync changes
                  * - device 1: sync -> doc A will be recognized as created, because of the diff in lastPulledAt and server_created_at, if we now omit the deletion we will not have this important change!
                  */
-                let initialCreated: SyncObj[] = []
                 const created = createdSN.docs.reduce((prev, curr) => {
                     const data = curr.data();
                     if (data.sessionId !== sessionId) {
@@ -115,9 +117,8 @@ export class SyncFireMelon {
                     }
 
                     return prev
-                }, initialCreated)
+                }, [] as SyncObj[])
 
-                let initialUpdated: SyncObj[] = []
                 const updated = updatedSN.docs.reduce((prev, curr) => {
                     const data = curr.data();
                     /**
@@ -139,9 +140,8 @@ export class SyncFireMelon {
                     }
 
                     return prev
-                }, initialUpdated)
+                }, [] as SyncObj[])
 
-                let initialDeleted: string[] = [];
                 const deleted = deletedSN.docs.reduce((prev, curr) => {
                     const data = curr.data();
                     if (data.sessionId !== sessionId) {
@@ -154,7 +154,7 @@ export class SyncFireMelon {
                     }
 
                     return prev
-                }, initialDeleted)
+                }, [] as SyncObj[])
 
                 console.log(`FireMelon > ${collectionName} > created=${created.length}, deleted=${deleted.length}, updated=${updated.length}`)
                 changes = {
@@ -179,6 +179,11 @@ export class SyncFireMelon {
         return { changes, totalChanges }
     }
 
+    getCollectionRef(collectionName: string) {
+        const collectionOptions = this.syncObj[collectionName];
+        return (collectionOptions.customPushCollection && collectionOptions.customPushCollection(this.db, collectionName)) || this.db.collection(collectionName);
+    }
+
     // Private!!
     async _pushChanges({ changes, sessionId, lastPulledAt }:
         { changes: SyncDatabaseChangeSet, sessionId: string, lastPulledAt: number }) {
@@ -190,23 +195,18 @@ export class SyncFireMelon {
             0);
         console.log(`FireMelon > Push > Total changes: ${totalChanges}`);
 
-        // let docRefs = await Promise.all(Object.keys(changes).map(async (collectionName: string) => {
-        //     const deletedIds = changes[collectionName].deleted.map(id => id);
-        //     const createdIds = changes[collectionName].created.map(data => data.id);
-        //     const updatedIds = changes[collectionName].updated.map(data => data.id);
-
-        //     const collectionOptions = this.syncObj[collectionName];
-        //     const collectionRef = (collectionOptions.customPushCollection && collectionOptions.customPushCollection(this.db, collectionName)) || this.db.collection(collectionName)
-
-        //     const created = createdIds.length > 0 ? (await queryDocsInValue(collectionRef, 'id', createdIds)) : [];
-        //     const deleted = deletedIds.length > 0 ? (await queryDocsInValue(collectionRef, 'id', deletedIds)) : [];
-        //     const updated = updatedIds.length > 0 ? (await queryDocsInValue(collectionRef, 'id', updatedIds)) : [];
-
-        //     return { [collectionName]: { created, deleted, updated } }
-        // }))
-
-        // // collapse to single object: {users: {deleted: [], updated: []}, todos: {deleted:[], updated:[]}}
-        // docRefs = Object.assign({}, ...docRefs);
+        // get the createItems that already exist
+        // this is procedure introduced to account for created items during migration that can be introduced on all devices
+        const existingCreateIdsEntries = await Promise.all(
+            Object.entries(changes).map(async ([collectionName, changeSet]) => {
+                const idsToVerify = changeSet.created.map(obj => (obj.valueOf() as Item).id);
+                const ids = await checkIdsExistence(this.firestore, this.getCollectionRef(collectionName), idsToVerify)
+                return [collectionName, ids];
+            })
+        )
+        const existingCreateIds = Object.fromEntries(existingCreateIdsEntries);
+        console.log("existingCreateIds")
+        console.log(existingCreateIds)
 
         // Batch sync
         const batchArray: any[] = [];
@@ -240,14 +240,18 @@ export class SyncFireMelon {
 
                     switch (changeName) {
                         case 'created': {
-                            
+                            if (existingCreateIds[collectionName].includes(docId)) {
+                                console.log(`Firemelon > create > ${collectionName} > id '${docId}' already exists > skip create`)
+                                return;
+                            }
+
                             batchArray[batchIndex].set(docRef, {
                                 ...data,
                                 server_created_at: this.getTimestamp(),
                                 // server_updated_at: this.getTimestamp(), // delete this so that we do not get updated items when these are merely created
                                 isDeleted: false,
                                 sessionId,
-                            });
+                            })
 
                             if (assetOptions && assetOptions.push?.create) {
                                 //@ts-ignore
@@ -312,36 +316,6 @@ export class SyncFireMelon {
                                 //@ts-ignore
                                 assetOperations.push(async () => assetOptions.push.delete(docFromServer))
                             }
-
-                            // //@ts-ignore
-                            // const docFromServer = docRefs[collectionName].deleted.find(doc => doc.id == wmObj.toString())
-                            // if (docFromServer) {
-                            //     const { server_deleted_at: deletedAt, server_updated_at: updatedAt } = docFromServer;
-
-                            //     if (updatedAt.toDate() > lastPulledAt) {
-                            //         throw new Error(DOCUMENT_WAS_MODIFIED_ERROR);
-                            //     }
-
-                            //     if (deletedAt?.toDate() > lastPulledAt) {
-                            //         throw new Error(DOCUMENT_WAS_DELETED_ERROR);
-                            //     }
-
-                            //     batchArray[batchIndex].update(docRef, {
-                            //         server_deleted_at: this.getTimestamp(),
-                            //         isDeleted: true,
-                            //         sessionId,
-                            //     });
-
-                            //     if (assetOptions && assetOptions.push?.delete) {
-                            //         //@ts-ignore
-                            //         assetOperations.push(async () => assetOptions.push.delete(docFromServer))
-                            //     }
-
-                            // } else {
-                            //     const warning = `${DOCUMENT_TRYING_TO_DELETE_BUT_DOESNT_EXIST_ON_SERVER_ERROR} - document '${collectionName}' with id: '${docId}'`
-                            //     console.warn(warning)
-                            //     // Will ignore in line with 4 of Push Implementation (here)[https://nozbe.github.io/WatermelonDB/Advanced/Sync.html]
-                            // }
 
                             operationCounter++;
 
