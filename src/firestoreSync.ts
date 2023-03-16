@@ -156,7 +156,7 @@ export class SyncFireMelon {
                     return prev
                 }, [] as SyncObj[])
 
-                console.log(`FireMelon > ${collectionName} > created=${created.length}, deleted=${deleted.length}, updated=${updated.length}`)
+                console.log(`FireMelon > Pull > ${collectionName} > created=${created.length}, deleted=${deleted.length}, updated=${updated.length}`)
                 changes = {
                     ...changes,
                     [collectionName]: { created, deleted, updated },
@@ -165,7 +165,7 @@ export class SyncFireMelon {
         );
 
         // First execute the asset changes, if that completes successfully proceed with the Watermelon changes.
-        console.log(`FireMelon > pull assets > Will commit a total of ${assetOperations.length} asset changes`);
+        console.log(`FireMelon > Pull assets > Will commit a total of ${assetOperations.length} asset changes`);
         for (const assetOperation of assetOperations) {
             await assetOperation();
         }
