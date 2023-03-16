@@ -345,13 +345,13 @@ export class SyncFireMelon {
         try {
             if (batchArray.length > 0) {
                 for (const batch of batchArray) {
-                    console.log(`FireMelon > Push > Batch ${counter} > commit`)
-                    await batch.commit()
-                    console.log(`FireMelon > Push > Commit batch ${counter} done`)
+                    console.log(`FireMelon > Push > Batch ${counter} of ${batchArray.length} > commit`);
+                    await batch.commit();
+                    console.log(`FireMelon > Push > Commit batch ${counter} of ${batchArray.length} done`);
                     counter++;
                 }
             } else {
-                console.log('FireMelon > Push > Nothing to push')
+                console.log('FireMelon > Push > Nothing to push');
             }
         } catch (error) {
             //@ts-ignore
